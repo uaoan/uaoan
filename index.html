@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAgency - 安全代理与消息中心</title>
+    <style>
+        :root {
+            /* 浅色模式 */
+            --bg-color: #f5f5f7;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            /* 修改卡片背景，增加透明度 */
+            --card-bg: rgba(255, 255, 255, 0.4); 
+            --card-border: rgba(255, 255, 255, 0.5);
+            --accent-color: #0066cc;
+            --accent-hover: #0077ed;
+            --tab-bg: rgba(227, 227, 233, 0.6);
+            --tab-active: #ffffff;
+            --shadow-color: rgba(0, 0, 0, 0.08);
+        }
+
+        [data-theme="dark"] {
+            /* 深色模式 */
+            --bg-color: #000000;
+            --text-primary: #f5f5f7;
+            --text-secondary: #a1a1a6;
+            /* 修改卡片背景，大幅增加透明度，让背后的雪花透过来 */
+            --card-bg: rgba(28, 28, 30, 0.25); 
+            --card-border: rgba(255, 255, 255, 0.1);
+            --accent-color: #2997ff;
+            --accent-hover: #3ea6ff;
+            --tab-bg: rgba(44, 44, 46, 0.6);
+            --tab-active: #636366;
+            --shadow-color: rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* 统一的全屏天气画布 */
+        #weatherCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            /* 确保在最底层 */
+            z-index: 1; 
+            pointer-events: none;
+        }
+
+        /* 顶部导航 */
+        header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: flex-end;
+            position: relative;
+            z-index: 10;
+        }
+
+        .theme-toggle {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 10px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px var(--shadow-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 标题区 */
+        .hero {
+            text-align: center;
+            padding: 20px 20px 30px;
+            max-width: 1000px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent-color), #8a2be2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        /* MD3风格容器 (宽度由内容撑开) */
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 60px;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            /* 适当降低毛玻璃模糊度，让雪花更清晰 */
+            backdrop-filter: blur(12px); 
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 32px;
+            padding: 30px;
+            box-shadow: 0 16px 50px var(--shadow-color);
+            width: fit-content;
+            max-width: 95vw;
+        }
+
+        /* 标签页切换 */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            background: var(--tab-bg);
+            padding: 6px;
+            border-radius: 20px;
+            width: max-content;
+            margin: 0 auto 30px;
+            backdrop-filter: blur(15px);
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 16px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .tab-btn.active {
+            background: var(--tab-active);
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 下载按钮 */
+        .download-action {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .download-btn {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 14px 40px;
+            border-radius: 28px;
+            font-size: 1.15rem;
+            font-weight: bold;
+            box-shadow: 0 8px 24px rgba(0, 102, 204, 0.4);
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .download-btn:hover {
+            background-color: var(--accent-hover);
+            transform: scale(1.05);
+        }
+
+        /* === 截图画廊 === */
+        .gallery-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+
+        .main-image-wrapper {
+            border-radius: 24px;
+            overflow: hidden;
+            cursor: zoom-in;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            line-height: 0; 
+            font-size: 0;
+            background: rgba(128, 128, 128, 0.05);
+        }
+
+        .main-image-wrapper img {
+            max-width: 100%;
+            max-height: 65vh; 
+            display: block;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+
+        .main-image-wrapper:hover img {
+            transform: scale(1.015);
+        }
+
+        /* 缩略图 */
+        .thumbnail-strip {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 10px 5px;
+            scroll-behavior: smooth;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+            width: 100%;
+            max-width: 800px;
+            justify-content: center; 
+        }
+
+        @media (max-width: 800px) {
+            .thumbnail-strip { justify-content: flex-start; }
+        }
+        .thumbnail-strip::-webkit-scrollbar { display: none; }
+
+        .thumbnail {
+            flex: 0 0 auto;
+            height: 70px;
+            width: auto;
+            min-width: 70px;
+            border-radius: 12px;
+            object-fit: cover;
+            cursor: pointer;
+            opacity: 0.4;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .windows-gallery .thumbnail { width: 110px; }
+
+        .thumbnail.active {
+            opacity: 1;
+            border-color: var(--accent-color);
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 6px 12px var(--shadow-color);
+        }
+
+        .thumbnail:hover:not(.active) {
+            opacity: 0.8;
+            transform: translateY(-2px);
+        }
+
+        /* 特性列表 */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            text-align: left;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .feature-item {
+            /* 让卡片也微微透明 */
+            background: rgba(128, 128, 128, 0.1);
+            padding: 24px;
+            border-radius: 20px;
+            border: 1px solid var(--card-border);
+            transition: transform 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        .feature-item:hover {
+            transform: translateY(-4px);
+        }
+
+        .feature-item h3 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: var(--accent-color);
+        }
+
+        .feature-item p {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* 全屏图片查看器 */
+        .lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            cursor: zoom-out;
+        }
+
+        .lightbox.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .lightbox img {
+            max-width: 95vw;
+            max-height: 95vh;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .lightbox.show img {
+            transform: scale(1);
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .glass-card { padding: 20px; border-radius: 24px; }
+            .tabs { width: 100%; max-width: 280px; border-radius: 16px; gap: 4px; }
+            .tab-btn { flex: 1; padding: 12px 4px; font-size: 1rem; }
+            .main-image-wrapper img { max-height: 50vh; }
+            .thumbnail { height: 60px; min-width: 60px; }
+            .windows-gallery .thumbnail { width: 90px; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="weatherCanvas"></canvas>
+
+    <header>
+        <div class="theme-toggle" id="themeToggle">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="themeIcon">
+                <circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <span id="themeText">切换浅色</span>
+        </div>
+    </header>
+
+    <div class="hero">
+        <h1>UAgency</h1>
+        <p>基于 VLESS-Reality 协议打造的现代化安全代理软件。<br>采用全新 Material Design 3 设计语言，支持按规则智能分流，为您提供无感、极速的安全网络与私密消息体验。</p>
+    </div>
+
+    <div class="content-wrapper">
+        <div class="glass-card" id="mainCard">
+            
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('android')">Android</button>
+                <button class="tab-btn" onclick="switchTab('windows')">Windows</button>
+            </div>
+
+            <div id="content-android" class="tab-content active">
+                <div class="download-action">
+                    <a href="https://gitee.com/yuxyu47/uagency/releases/download/1.0.9/uagency.apk" class="download-btn">下载 Android 版 (v1.1.0)</a>
+                </div>
+                
+                <div class="gallery-container">
+                    <div class="main-image-wrapper" title="点击放大图片" onclick="openLightbox(this.querySelector('img').src)">
+                        <img id="main-img-android" src="./android1.jpg" alt="Android 展示">
+                    </div>
+                    
+                    <div class="thumbnail-strip" id="thumb-strip-android">
+                        <img class="thumbnail active" src="./android1.jpg" onclick="setMainImage('android', this.src, this)">
+                        <img class="thumbnail" src="./android2.jpg" onclick="setMainImage('android', this.src, this)">
+                        <img class="thumbnail" src="./android3.jpg" onclick="setMainImage('android', this.src, this)">
+                        <img class="thumbnail" src="./android4.jpg" onclick="setMainImage('android', this.src, this)">
+                        <img class="thumbnail" src="./android5.jpg" onclick="setMainImage('android', this.src, this)">
+                    </div>
+                </div>
+
+                <div class="features">
+                    <div class="feature-item">
+                        <h3>💎 MD3纯粹美学</h3>
+                        <p>采用 Jetpack Compose 构建。支持深浅色模式自动切换，提供丝滑的操作手感与沉浸式 UI。</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>🚀 VLESS-Reality & 智能分流</h3>
+                        <p>底层搭载强大的 Xray-core。采用深度优化的规则分流逻辑，精准识别流量：国内应用丝滑直连，海外流量走代理，告别繁琐切换。</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>💬 私密消息中心</h3>
+                        <p>内置端到端加密的聊天频道。支持发送图片、超长语音、合并转发，更有 WorkManager 后台保活机制，离线也能准时接收推送。</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>🎁 邀请与 VIP 体系</h3>
+                        <p>完善的用户系统，内置卡密兑换。分享专属邀请码给好友，注册即可自动获得丰厚 VIP 时长奖励。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="content-windows" class="tab-content">
+                <div class="download-action">
+                    <a href="https://gitee.com/yuxyu47/uagency/releases/download/1.1.0/uagency.exe" class="download-btn">下载 Windows 版 (v1.1.0)</a>
+                </div>
+                
+                <div class="gallery-container windows-gallery">
+                    <div class="main-image-wrapper" title="点击放大图片" onclick="openLightbox(this.querySelector('img').src)">
+                        <img id="main-img-windows" src="./windows1.png" alt="Windows 展示">
+                    </div>
+                    
+                    <div class="thumbnail-strip" id="thumb-strip-windows">
+                        <img class="thumbnail active" src="./windows1.png" onclick="setMainImage('windows', this.src, this)">
+                        <img class="thumbnail" src="./windows2.png" onclick="setMainImage('windows', this.src, this)">
+                        <img class="thumbnail" src="./windows3.png" onclick="setMainImage('windows', this.src, this)">
+                        <img class="thumbnail" src="./windows4.png" onclick="setMainImage('windows', this.src, this)">
+                        <img class="thumbnail" src="./windows5.png" onclick="setMainImage('windows', this.src, this)">
+                        <img class="thumbnail" src="./windows6.png" onclick="setMainImage('windows', this.src, this)">
+                    </div>
+                </div>
+
+                <div class="features">
+                    <div class="feature-item">
+                        <h3>💻 桌面级沉浸体验</h3>
+                        <p>基于 Flutter 打造的 Windows 原生桌面端，完美适配 Windows 11 环境，界面清爽，极简操作，开箱即用。</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>⚡ 毫秒级节点测速</h3>
+                        <p>支持一键多线程测速，节点延迟、上下行速率实时监控，智能优选最佳节点，确保稳定高效的网络连接。</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>🧹 自动化环境清理</h3>
+                        <p>内建强大的系统守护与卸载器，支持自动化数据库及数据表残留清理，确保系统环境纯净无痕。</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Enlarged view">
+    </div>
+
+    <script>
+        const isMobileDevice = () => window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // --- 标签页切换逻辑 ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById('content-' + tabId).classList.add('active');
+            
+            setTimeout(initSnowHeights, 50);
+        }
+
+        // --- 图片画廊逻辑 ---
+        function setMainImage(platform, src, thumbEl) {
+            document.getElementById('main-img-' + platform).src = src;
+            const strip = thumbEl.parentElement;
+            strip.querySelectorAll('.thumbnail').forEach(el => el.classList.remove('active'));
+            thumbEl.classList.add('active');
+            thumbEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            
+            setTimeout(initSnowHeights, 300);
+        }
+
+        // --- 支持鼠标滚轮横向滚动缩略图 ---
+        document.querySelectorAll('.thumbnail-strip').forEach(strip => {
+            strip.addEventListener('wheel', (e) => {
+                if (e.deltaY !== 0) {
+                    e.preventDefault();
+                    strip.scrollLeft += e.deltaY;
+                }
+            });
+        });
+
+        // --- Lightbox 全屏放大查看逻辑 ---
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+
+        function openLightbox(src) {
+            lightboxImg.src = src;
+            lightbox.classList.add('show');
+            document.body.style.overflow = 'hidden'; 
+            
+            // 将当前状态压入历史记录，标记全屏图片已打开
+            history.pushState({ lightbox: 'open' }, '');
+        }
+
+        // 核心关闭函数，仅负责清除状态
+        function _closeAction() {
+            lightbox.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        function closeLightbox() {
+            // 如果是通过点击黑底区域关闭，需要将历史记录退后一格
+            // 触发 popstate 事件来调用真正的关闭操作
+            if(history.state && history.state.lightbox === 'open') {
+                history.back();
+            } else {
+                _closeAction();
+            }
+        }
+
+        // ====== 修复：判断手机端放大后按下返回键关闭图片 ======
+        window.addEventListener('popstate', (e) => {
+            // 当检测到历史记录回退（即用户按下了手机物理/手势返回键）
+            if (lightbox.classList.contains('show')) {
+                _closeAction();
+            }
+        });
+
+        // --- 主题切换逻辑 ---
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        
+        setTheme('dark'); 
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        });
+
+        function setTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                themeText.textContent = '切换浅色';
+                themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                themeText.textContent = '切换深色';
+                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+            }
+        }
+
+        // ================= 漫天大雪与智能终端积雪系统 =================
+        const canvas = document.getElementById('weatherCanvas');
+        const ctx = canvas.getContext('2d');
+        const card = document.getElementById('mainCard');
+        
+        let screenW, screenH;
+        let particles = [];
+        
+        const SEG_WIDTH = 4;
+        let snowHeights = []; 
+        let maxSnow = 60; 
+        
+        let isBlowing = false; 
+        let blowX = 0; 
+
+        function resize() {
+            screenW = canvas.width = window.innerWidth;
+            screenH = canvas.height = window.innerHeight;
+            createParticles();
+            initSnowHeights();
+        }
+
+        function initSnowHeights() {
+            if(!card) return;
+            const rect = card.getBoundingClientRect();
+            const segments = Math.ceil(rect.width / SEG_WIDTH);
+            if (snowHeights.length !== segments) {
+                const oldSnow = [...snowHeights];
+                snowHeights = new Array(segments).fill(0);
+                for(let i=0; i<Math.min(oldSnow.length, segments); i++){
+                    snowHeights[i] = oldSnow[i];
+                }
+            }
+        }
+
+        function createParticles() {
+            particles = [];
+            const pCount = isMobileDevice() ? 200 : 450;
+            for (let i = 0; i < pCount; i++) {
+                particles.push({
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    speedY: Math.random() * 2 + 1.8, 
+                    speedX: Math.random() * 1 - 0.5,
+                    size: Math.random() * 2.5 + 1.2,
+                    isSnow: Math.random() > 0.15 
+                });
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function animateWeather() {
+            ctx.clearRect(0, 0, screenW, screenH);
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            
+            const cardRect = card.getBoundingClientRect();
+            const cardIsVisible = (cardRect.top < screenH && cardRect.bottom > 0);
+
+            // ====== 1. 狂风控制逻辑 ======
+            if (!isBlowing) {
+                let totalSnow = snowHeights.reduce((a, b) => a + b, 0);
+                let maxPossible = snowHeights.length * maxSnow;
+                if (totalSnow > maxPossible * 0.55) { 
+                    isBlowing = true;
+                    blowX = 0;
+                }
+            } else {
+                blowX += 15; 
+                let blowIdx = Math.floor(blowX / SEG_WIDTH);
+                for(let i = 0; i < blowIdx && i < snowHeights.length; i++) {
+                    if (snowHeights[i] > 0) {
+                        snowHeights[i] = Math.max(0, snowHeights[i] - 5);
+                        if (Math.random() > 0.6) {
+                            ctx.beginPath();
+                            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.9)';
+                            ctx.arc(cardRect.left + i*SEG_WIDTH + Math.random()*20, cardRect.top - Math.random()*30, Math.random()*1.5+0.5, 0, Math.PI*2);
+                            ctx.fill();
+                        }
+                    }
+                }
+                if (blowIdx > snowHeights.length + 30) {
+                    isBlowing = false;
+                }
+            }
+
+            // ====== 2. 渲染飘落的雨雪 ======
+            particles.forEach(p => {
+                ctx.beginPath();
+                if (p.isSnow) {
+                    ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.15)';
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                } else {
+                    ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.3)';
+                    ctx.ellipse(p.x, p.y, p.size * 0.3, p.size * 2.5, Math.PI / 12, 0, Math.PI * 2);
+                }
+                ctx.fill();
+
+                let currentWind = isBlowing ? 10 : 0; 
+                p.x += p.speedX + currentWind;
+                p.y += p.speedY * (p.isSnow ? 1.2 : 2.8);
+
+                // ======= 精确的积雪碰撞检测 =======
+                if (p.isSnow && cardIsVisible && 
+                    p.y >= cardRect.top - 5 && p.y <= cardRect.top + 10 && 
+                    p.x >= cardRect.left && p.x <= cardRect.right) 
+                {
+                    let hitIdx = Math.floor((p.x - cardRect.left) / SEG_WIDTH);
+                    if (hitIdx >= 0 && hitIdx < snowHeights.length) {
+                        if (snowHeights[hitIdx] < maxSnow) {
+                            
+                            const mainAccumulation = isMobileDevice() ? 0.6 : 2.0;
+                            const sideAccumulation = isMobileDevice() ? 0.2 : 0.8;
+
+                            snowHeights[hitIdx] += mainAccumulation; 
+                            
+                            if (hitIdx > 0) snowHeights[hitIdx-1] += sideAccumulation;
+                            if (hitIdx < snowHeights.length - 1) snowHeights[hitIdx+1] += sideAccumulation;
+                        }
+                    }
+                    p.y = -10;
+                    p.x = Math.random() * screenW;
+                }
+
+                if (p.y > screenH) { p.y = -10; p.x = Math.random() * screenW; }
+                if (p.x > screenW) p.x = 0;
+                if (p.x < 0) p.x = screenW;
+            });
+
+            // ====== 3. 渲染卡片顶部的积雪层 ======
+            if (cardIsVisible) {
+                ctx.fillStyle = isDark ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.95)';
+                ctx.beginPath();
+                ctx.moveTo(cardRect.left, cardRect.top + 2);
+                
+                for (let i = 0; i < snowHeights.length; i++) {
+                    let x = cardRect.left + i * SEG_WIDTH;
+                    
+                    let cornerDrop = 0;
+                    const radiusSegments = 32 / SEG_WIDTH; 
+                    if (i < radiusSegments) {
+                        cornerDrop = (radiusSegments - i) * 1.5;
+                    } else if (i > snowHeights.length - radiusSegments) {
+                        cornerDrop = (i - (snowHeights.length - radiusSegments)) * 1.5;
+                    }
+                    
+                    let finalHeight = Math.max(0, snowHeights[i] - cornerDrop);
+                    ctx.lineTo(x, (cardRect.top + 2) - finalHeight);
+                }
+                
+                ctx.lineTo(cardRect.right, cardRect.top + 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            requestAnimationFrame(animateWeather);
+        }
+
+        setTimeout(animateWeather, 150);
+    </script>
+</body>
+</html>
